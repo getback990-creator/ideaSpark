@@ -14,6 +14,10 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 const API_KEY = process.env.OPENAI_API_KEY;
+// 利用するAI提供元のエンドポイント。OpenAI互換ならGroq等もそのまま使える
+// OpenAI:  https://api.openai.com/v1 （既定）
+// Groq:    https://api.groq.com/openai/v1  （無料・カード不要、モデル例: llama-3.3-70b-versatile）
+const AI_BASE_URL = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 // auto: 本物のAPIを試し、quota/キー不足ならモックに自動フォールバック
 // mock: 常にサンプル応答（公開デモ向け・無料）  live: 常に本物
 const AI_MODE = (process.env.AI_MODE || (API_KEY ? "auto" : "mock")).toLowerCase();
@@ -26,7 +30,7 @@ async function callOpenAI({ system, user, temperature = 0.8 }) {
   if (!API_KEY) {
     throw Object.assign(new Error("OPENAI_API_KEY が未設定です。.env を確認してください。"), { status: 500 });
   }
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
     body: JSON.stringify({
@@ -69,17 +73,22 @@ async function complete({ system, user, temperature, mock }) {
 }
 
 /* ---------- モック生成（公開デモ用のサンプル応答） ---------- */
-function mockRequirements(messages, fields) {
+const BIG_GOAL_RE = /億|バイアウト|売却|スケール|上場|ipo|exit|m&a|大きく|大型|ユニコーン|急成長/i;
+
+function mockRequirements(messages, fields, goal = "") {
   const userMsgs = messages.filter((m) => m.role === "user");
   const last = userMsgs.at(-1)?.content || "";
   const f = { ...fields };
   const order = ["market_need", "customer_problem", "trend", "cost_difficulty"];
   const topic = (last.slice(0, 24) || "その領域").trim();
+  const big = BIG_GOAL_RE.test(goal);
   const fillers = {
-    market_need: `${topic}に関する需要は拡大傾向。手間やコストを下げたい、不安を減らしたいという声が強い。`,
+    market_need: `${topic}に関する需要は拡大傾向。${big ? "短期で大きく伸ばすなら、市場規模が大きく拡大の速い領域を狙いたい。" : "手間やコストを下げたい、不安を減らしたいという声が強い。"}`,
     customer_problem: `${topic}では、時間がかかる・分かりにくい・任せられる相手がいない、といった痛みが残っている。`,
-    trend: "デジタル化と生成AIの普及で、個人や小さなチームでも素早く始めて検証できる環境が整ってきた。",
-    cost_difficulty: "初期はノーコードや既存サービス連携で低コストに検証可能。難易度は中程度で、運用の磨き込みが差別化の鍵になる。",
+    trend: `デジタル化と生成AIの普及で、個人や小さなチームでも素早く始めて検証できる環境が整ってきた。${big ? "とくにAI・データ領域は資金が集まりやすく、出口（M&A/上場）も見込みやすい。" : ""}`,
+    cost_difficulty: big
+      ? "短期での大型イグジットを狙うなら、再現性とスケール性が鍵。初期は小さく検証しつつ、仕組みで伸びる設計にする。"
+      : "初期はノーコードや既存サービス連携で低コストに検証可能。難易度は中程度で、運用の磨き込みが差別化の鍵になる。",
   };
   const firstEmpty = order.find((k) => !f[k]);
   if (firstEmpty) f[firstEmpty] = fillers[firstEmpty];
@@ -105,12 +114,15 @@ function mockGenerate(p, count) {
   const need = (p.market_need || "対象領域の需要が拡大している").replace(/[。.]\s*$/, "");
   const problem = (p.customer_problem || "日々の手間や不安が残っている").replace(/[。.]\s*$/, "");
   const persona = p.persona || "";
-  const baseAud = persona.includes("副業")
-    ? "副業として小さく始めたい個人"
-    : persona.includes("社内")
-      ? "自社の顧客基盤を活かせる事業部門"
-      : "課題感が強く、先行して動くアーリーアダプター";
-  const concepts = [
+  const big = BIG_GOAL_RE.test(p.goal || "");
+  const baseAud = big
+    ? "拡大余地の大きい市場の初期顧客（横展開しやすいセグメント）"
+    : persona.includes("副業")
+      ? "副業として小さく始めたい個人"
+      : persona.includes("社内")
+        ? "自社の顧客基盤を活かせる事業部門"
+        : "課題感が強く、先行して動くアーリーアダプター";
+  let concepts = [
     { t: "オンデマンド・マッチング", c: "必要なときだけ、必要な分だけつなぐ", m: "需要が発生した瞬間に供給側とマッチングし、遊休リソースを収益化する", who: "スポットで頼みたい利用者と、空き時間を活かしたい供給者", tr: "所有から利用へのシフトと、スポット需要のオンデマンド化", cd: "低コスト/中難度", tg: ["マッチング", "オンデマンド"] },
     { t: "継続支援サブスク", c: "売り切りから、続く関係へ", m: "単発提供をやめ、月額で継続的に伴走するモデルへ転換する", who: "一度きりでは解決しない悩みを抱える層", tr: "本当に役立つ継続課金の定着と、LTV重視への移行", cd: "低コスト/低難度", tg: ["サブスク", "LTV"] },
     { t: "特化型AIアシスタント", c: "その業務だけ、誰よりも賢く", m: "特定業務に絞ったAIアシスタントで、汎用AIでは届かない精度と手間削減を出す", who: "反復的で専門的な作業に時間を奪われている人", tr: "汎用LLMの普及で、縦に深い特化AIへ価値が移行", cd: "中コスト/中難度", tg: ["生成AI", "特化SaaS"] },
@@ -124,16 +136,27 @@ function mockGenerate(p, count) {
     { t: "体験デザイン", c: "オンラインでは得られない時間を", m: "リアル/オンラインの体験を企画し、参加費とスポンサーで収益化する", who: "つながりや実体験に飢えている層", tr: "コト消費・ローカル回帰と、体験価値の見直し", cd: "低コスト/低難度", tg: ["体験", "ローカル"] },
     { t: "エシカル・プロダクト", c: "選ぶだけで、社会に効く", m: "環境・社会配慮を組み込んだ商品/サービスで、共感を購買につなげる", who: "価値観で選びたいエシカル志向の生活者", tr: "脱炭素・エシカル消費の主流化と、企業の調達基準の変化", cd: "中コスト/中難度", tg: ["サステナ", "D2C"] },
   ];
+  // 毎回の生成で並びを変えて多様性を出す（同じ案ばかりにならないように）
+  for (let i = concepts.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [concepts[i], concepts[j]] = [concepts[j], concepts[i]];
+  }
+  // ゴールが大型イグジット志向なら、スケール性の高い案を前に寄せる（順序はシャッフル済みなので毎回変わる）
+  if (big) {
+    const priority = ["特化型AIアシスタント", "一次データ・レポート", "オンデマンド・マッチング", "継続支援サブスク", "診断・レコメンド", "スキル/資産シェア"];
+    const isPri = (t) => priority.includes(t);
+    concepts = [...concepts.filter((c) => isPri(c.t)), ...concepts.filter((c) => !isPri(c.t))];
+  }
   return {
     ideas: concepts.slice(0, count).map((x) => ({
       title: x.t,
       catchphrase: x.c,
       problem: `${problem}。とくに${x.who}にとって、手間・コスト・情報不足のいずれかが障壁になっている。`,
       target: `${baseAud}。具体的には${x.who}。`,
-      solution: `${x.m}。「${need}」という追い風を踏まえ、まず小さく検証しながら磨き込む。`,
+      solution: `${x.m}。「${need}」という追い風を踏まえ、まず小さく検証しながら磨き込む。${big ? "横展開しやすい仕組みにし、数年での大型化（M&A/上場）も狙える設計に。" : ""}`,
       trend: `${x.tr}。なぜ今かというと、この潮流が需要側・供給側の双方で同時に進んでいるため。`,
       costDifficulty: x.cd,
-      tags: x.tg,
+      tags: big ? [...x.tg, "スケール"].slice(0, 3) : x.tg,
     })),
   };
 }
@@ -158,6 +181,13 @@ function mockValidate(idea) {
 function mockMentor(idea, v, lastUser) {
   return {
     reply: `いい問いですね。「${(lastUser || "").slice(0, 28)}」については、まず最も危険な前提（${v.riskiest_assumption || "顧客が本当に困っているか"}）を最小コストで確かめるのが先決です。\n次の一手:\n・対象顧客5名に15分インタビューし、課題の切実さを生の言葉で確認\n・「お金を払ってでも解決したいか」を直接聞く\n・反応が弱ければ対象セグメントを変えてピボットを検討\nまず今日中に1件、話を聞いてみましょう。`,
+  };
+}
+
+function mockHumanMentor(mentor, idea, content) {
+  const exp = (() => { try { return JSON.parse(mentor.expertise || "[]"); } catch { return []; } })();
+  return {
+    reply: `${mentor.name}です。ご相談ありがとうございます。「${idea?.title || "この事業"}」、面白いですね。\n私の経験（${exp.slice(0, 2).join("・") || mentor.title}）から一点だけ。「${(content || "").slice(0, 30) || "今の論点"}」については、まず一番不確実なところを“安く速く”当てにいくのが定石です。具体的には、想定顧客に直接5件ヒアリングして、課題の切実さと支払い意思をその場で確かめてみてください。\nもう少し詳しく壁打ちしたければ、日程を合わせてオンラインでお話ししましょう。応援しています。`,
   };
 }
 
@@ -257,7 +287,7 @@ function startSession(res, userId) {
  *  ① 対話型 要件整理
  * ========================================================== */
 app.post("/api/requirements/chat", requireAuth, wrap(async (req, res) => {
-  const { messages = [], fields = {} } = req.body || {};
+  const { messages = [], fields = {}, goal = "" } = req.body || {};
   const convo = messages.map((m) => `${m.role === "user" ? "ユーザー" : "コンサル"}: ${m.content}`).join("\n");
 
   const user = `あなたは新規事業のアイデア要件を、対話を通じて一緒に整理するコンサルタントです。
@@ -267,6 +297,9 @@ app.post("/api/requirements/chat", requireAuth, wrap(async (req, res) => {
 3. trend（トレンド：なぜ今か。具体的潮流）
 4. cost_difficulty（実現コスト/難易度：必要リソース・参入障壁）
 
+# ユーザーのオープンな要望・ゴール（最優先で尊重する）
+${goal || "（特になし。テーマ・志向は自由に提案してよい）"}
+
 # これまでの会話
 ${convo || "（まだ会話なし。最初の問いかけから始める）"}
 
@@ -274,8 +307,9 @@ ${convo || "（まだ会話なし。最初の問いかけから始める）"}
 ${JSON.stringify(fields, null, 2)}
 
 # 指示
+- 上の「要望・ゴール」を最優先で尊重する。テーマが自由なら、ゴール（例：数年で大型バイアウト＝高成長・スケール性・出口を重視／月数万円の副業＝低リスク・低コスト）に沿って各観点を方向づける。
 - ユーザーの直近の回答を踏まえ、まだ曖昧な観点について、深掘りする質問を1つだけ返す。
-- ユーザーが「わからない/お任せ」と言ったら、あなたが仮説で候補を提示して合意を取りにいく。
+- ユーザーが「わからない/お任せ」と言ったら、ゴールに沿った仮説候補を提示して合意を取りにいく。
 - 各観点の現時点の要約を fields に反映（推測でも可、簡潔に）。
 - 4観点が十分に具体化できたら complete=true、suggestedTitle にテーマ名を入れる。
 
@@ -287,25 +321,38 @@ ${JSON.stringify(fields, null, 2)}
   "suggestedTitle": ""
 }`;
 
-  const out = await complete({ system: CONSULTANT, user, temperature: 0.7, mock: () => mockRequirements(messages, fields) });
+  const out = await complete({ system: CONSULTANT, user, temperature: 0.7, mock: () => mockRequirements(messages, fields, goal) });
   res.json(out);
 }));
 
 app.post("/api/projects", requireAuth, wrap(async (req, res) => {
-  const { id, title, persona, fields = {}, chatLog = [], status = "ready" } = req.body || {};
+  const { id, title, persona, goal, fields = {}, chatLog = [], status = "ready" } = req.body || {};
+  const f = fields || {};
+  // node:sqlite は undefined をバインドできないため null/"" に正規化
+  const vals = [
+    title || "無題のテーマ",
+    persona ?? "",
+    goal ?? "",
+    f.market_need ?? "",
+    f.customer_problem ?? "",
+    f.trend ?? "",
+    f.cost_difficulty ?? "",
+    JSON.stringify(chatLog || []),
+    status || "ready",
+  ];
   if (id) {
     db.prepare(
-      `UPDATE projects SET title=?, persona=?, market_need=?, customer_problem=?, trend=?, cost_difficulty=?, chat_log=?, status=?
+      `UPDATE projects SET title=?, persona=?, goal=?, market_need=?, customer_problem=?, trend=?, cost_difficulty=?, chat_log=?, status=?
        WHERE id=? AND user_id=?`
-    ).run(title, persona, fields.market_need, fields.customer_problem, fields.trend, fields.cost_difficulty, JSON.stringify(chatLog), status, id, req.user.id);
+    ).run(...vals, id, req.user.id);
     return res.json({ id });
   }
   const info = db
     .prepare(
-      `INSERT INTO projects (user_id, title, persona, market_need, customer_problem, trend, cost_difficulty, chat_log, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO projects (user_id, title, persona, goal, market_need, customer_problem, trend, cost_difficulty, chat_log, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(req.user.id, title || "無題のテーマ", persona, fields.market_need, fields.customer_problem, fields.trend, fields.cost_difficulty, JSON.stringify(chatLog), status);
+    .run(req.user.id, ...vals);
   res.json({ id: info.lastInsertRowid });
 }));
 
@@ -326,6 +373,7 @@ app.post("/api/generate", requireAuth, wrap(async (req, res) => {
 
 # 要件整理
 - 対象タイプ: ${p.persona || "指定なし"}
+- ユーザーの要望・ゴール（最優先で反映）: ${p.goal || "特になし（テーマ自由。妥当な範囲で提案）"}
 - 市場ニーズ: ${p.market_need || "未整理"}
 - 顧客課題: ${p.customer_problem || "未整理"}
 - トレンド: ${p.trend || "未整理"}
@@ -349,6 +397,7 @@ app.post("/api/generate", requireAuth, wrap(async (req, res) => {
 
 # 条件
 - 必ず${count}案。切り口(ビジネスモデル/対象/技術)を変え、似通わせないこと。
+- 「ユーザーの要望・ゴール」を最優先で反映する（例：数年で大型バイアウトを望むなら、スケール性・再現性・出口(M&A/上場)の見込める案を優先。月数万円の副業志向なら低リスク・低コストを優先）。
 - 上記の実現コスト前提に現実的に合う規模にすること。
 - 各案は具体的な提供価値にし、「AIで効率化」程度の薄い一般論や抽象語は避ける。
 - problem は「誰の・どんな場面で・何が」痛いのかを具体的に書く。target は属性まで絞る。
@@ -503,6 +552,53 @@ ${history.map((m) => `${m.role === "user" ? "相談者" : "メンター"}: ${m.c
   db.prepare("INSERT INTO mentor_messages (validation_id, user_id, role, content) VALUES (?, ?, 'ai', ?)").run(vId, req.user.id, out.reply || "");
   const messages = db.prepare("SELECT * FROM mentor_messages WHERE validation_id = ? ORDER BY id").all(vId);
   res.json({ messages });
+}));
+
+/* ============================================================
+ *  ⑤ 登録メンター（プロピッカー）＋ 人メンターへの相談
+ * ========================================================== */
+app.get("/api/mentors", wrap(async (req, res) => {
+  const rows = db.prepare("SELECT * FROM mentors ORDER BY responses DESC").all();
+  res.json({ mentors: rows.map((m) => ({ ...m, expertise: JSON.parse(m.expertise || "[]") })) });
+}));
+
+// 人メンターに相談（依頼を記録し、そのメンターからの一次返信を返す）
+app.post("/api/mentor/:validationId/human", requireAuth, wrap(async (req, res) => {
+  const { mentorId, content } = req.body || {};
+  const vId = req.params.validationId;
+  const v = db.prepare("SELECT * FROM validations WHERE id = ? AND user_id = ?").get(vId, req.user.id);
+  if (!v) throw Object.assign(new Error("検証が見つかりません"), { status: 404 });
+  const mentor = db.prepare("SELECT * FROM mentors WHERE id = ?").get(mentorId);
+  if (!mentor) throw Object.assign(new Error("メンターが見つかりません"), { status: 404 });
+  const idea = db.prepare("SELECT * FROM ideas WHERE id = ?").get(v.idea_id);
+
+  const msg = content || `「${idea?.title || "この事業"}」について相談させてください。`;
+  db.prepare("INSERT INTO mentor_messages (validation_id, user_id, role, content) VALUES (?, ?, 'user', ?)").run(vId, req.user.id, msg);
+  db.prepare("INSERT INTO consultations (validation_id, user_id, mentor_id, message) VALUES (?, ?, ?, ?)").run(vId, req.user.id, mentorId, msg);
+  db.prepare("UPDATE mentors SET responses = responses + 1 WHERE id = ?").run(mentorId);
+
+  const expertise = JSON.parse(mentor.expertise || "[]");
+  const userPrompt = `あなたは実在のメンター「${mentor.name}（${mentor.title}）」として、相談者に人として親身に一次返信します。
+あなたの専門: ${expertise.join("、")}
+あなたの経歴: ${mentor.bio}
+
+# 相談対象の事業
+${idea?.title}: ${idea?.solution}
+中核仮説: ${v.hypothesis}
+
+# 相談内容
+${msg}
+
+# 出力JSON
+{ "reply": "${mentor.name}としての返信（自己紹介を一言添え、専門を踏まえた具体的助言と次の一手。250字程度。最後に必要なら面談を提案）" }`;
+
+  const out = await complete({ system: CONSULTANT, user: userPrompt, temperature: 0.75, mock: () => mockHumanMentor(mentor, idea, msg) });
+  db.prepare(
+    "INSERT INTO mentor_messages (validation_id, user_id, role, content, mentor_id, mentor_name) VALUES (?, ?, 'human', ?, ?, ?)"
+  ).run(vId, req.user.id, out.reply || "", mentorId, mentor.name);
+
+  const messages = db.prepare("SELECT * FROM mentor_messages WHERE validation_id = ? ORDER BY id").all(vId);
+  res.json({ messages, mentor: { ...mentor, expertise } });
 }));
 
 /* ============================================================ */

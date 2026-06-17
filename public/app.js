@@ -23,6 +23,7 @@ const state = {
   chat: [],
   fields: { market_need: "", customer_problem: "", trend: "", cost_difficulty: "" },
   persona: "",
+  goal: "",
   projectId: null,
   projectTitle: "",
 };
@@ -89,6 +90,8 @@ async function render() {
       return viewIdeas(params.p);
     case "/lab":
       return viewLab();
+    case "/mentors":
+      return viewMentors();
     default:
       return viewDashboard();
   }
@@ -126,6 +129,7 @@ function renderNav() {
   nav.innerHTML = `
     <a class="navlink" data-go="/dashboard">ダッシュボード</a>
     <a class="navlink" data-go="/lab">検証ラボ</a>
+    <a class="navlink" data-go="/mentors">メンター</a>
     <span class="nav-user">${esc(state.user.name)}${state.user.type === "company" ? "（企業）" : ""}</span>
     <button class="nav-logout" id="logoutBtn">ログアウト</button>`;
   nav.querySelectorAll("[data-go]").forEach((a) => (a.onclick = () => navigate(a.dataset.go)));
@@ -326,6 +330,7 @@ async function viewRequirements(pid) {
     if (p) {
       state.projectId = p.id;
       state.persona = p.persona || "";
+      state.goal = p.goal || "";
       state.projectTitle = p.title;
       state.fields = {
         market_need: p.market_need || "",
@@ -338,6 +343,7 @@ async function viewRequirements(pid) {
   } else {
     state.projectId = null;
     state.persona = "";
+    state.goal = "";
     state.projectTitle = "";
     state.fields = { market_need: "", customer_problem: "", trend: "", cost_difficulty: "" };
     state.chat = [];
@@ -347,7 +353,7 @@ async function viewRequirements(pid) {
       {
         role: "assistant",
         content:
-          "事業アイデアの種を一緒に整理していきましょう。まず、上のボタンからあなたのタイプを選んでください。そのうえで——気になっている分野や、世の中で「これは不便だな」と感じることはありますか？特になければ「お任せ」でも構いません。",
+          "事業アイデアの種を一緒に整理していきましょう。まず、上のボタンからあなたのタイプを選び、すぐ下の「あなたの要望・ゴール」に思っていることを自由に書いてください。たとえば「テーマは何でもいい、数年で億単位のバイアウトをしたい」「月5万円の副業がしたい」のような書き方でOKです。気になっている分野があれば、それも教えてください。なければ「お任せ」でも構いません。",
       },
     ];
   }
@@ -363,6 +369,10 @@ function renderRequirements() {
     <div class="card req-chat">
       <div class="persona-row">
         ${PERSONAS.map((p) => `<button class="chip ${state.persona === p.v ? "active" : ""}" data-persona="${esc(p.v)}">${p.t}</button>`).join("")}
+      </div>
+      <div class="goal-box">
+        <label class="goal-label">あなたの要望・ゴール<span>（自由・任意。テーマが無くてもOK）</span></label>
+        <textarea id="goalInput" class="goal-input" rows="2" placeholder="例：テーマは何でもいい。数年で億単位のバイアウトができる事業がいい／月5万円の副業を作りたい／好きな『食』の分野で起業したい">${esc(state.goal)}</textarea>
       </div>
       <div class="chat-scroll" id="chatScroll"></div>
       <div class="chat-input">
@@ -396,6 +406,7 @@ function renderRequirements() {
         renderRequirements();
       })
   );
+  $("#goalInput").oninput = (e) => (state.goal = e.target.value);
   drawChat();
 
   const box = $("#chatBox");
@@ -413,7 +424,7 @@ function renderRequirements() {
     $("#sendBtn").disabled = true;
     const typing = appendTyping();
     try {
-      const out = await api("POST", "/api/requirements/chat", { messages: state.chat, fields: state.fields });
+      const out = await api("POST", "/api/requirements/chat", { messages: state.chat, fields: state.fields, goal: state.goal });
       state.fields = { ...state.fields, ...(out.fields || {}) };
       if (out.suggestedTitle && !state.projectTitle) state.projectTitle = out.suggestedTitle;
       state.chat.push({ role: "assistant", content: out.reply || "（応答なし）" });
@@ -435,8 +446,9 @@ function renderRequirements() {
     try {
       const { id } = await api("POST", "/api/projects", {
         id: state.projectId,
-        title: state.projectTitle || state.fields.customer_problem?.slice(0, 16) || "新しいテーマ",
+        title: state.projectTitle || state.goal?.slice(0, 16) || state.fields.customer_problem?.slice(0, 16) || "新しいテーマ",
         persona: state.persona,
+        goal: state.goal,
         fields: state.fields,
         chatLog: state.chat,
         status: "ready",
@@ -642,7 +654,13 @@ function bindLab(validations) {
   );
 }
 
-// ---------- メンターモーダル ----------
+// ---------- メンター用ヘルパー ----------
+function mentorAvatar(m, size = 44) {
+  const ch = (m.name || "?").trim().charAt(0);
+  return `<div class="m-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size / 2.4)}px;background:${esc(m.color || "#6c5cff")}">${esc(ch)}</div>`;
+}
+
+// ---------- メンターモーダル（AI一次対応 + 人メンター相談） ----------
 async function openMentor(vid, v) {
   const root = $("#modal-root");
   root.innerHTML = `
@@ -652,25 +670,29 @@ async function openMentor(vid, v) {
       <button class="modal-close" id="mClose">✕</button>
       <h3 class="modal-title">メンター相談</h3>
       <p class="modal-sub">${esc(v.idea_title)}</p>
-      <div class="mentor-note">AIメンターが一次対応します。必要に応じて人間のメンターへのエスカレーションも可能です（β）。</div>
+      <div class="mentor-note">まずはAIメンターが一次対応します。下の「人のメンターに相談」から、登録メンターに直接相談することもできます。</div>
       <div class="chat-scroll mentor-scroll" id="mScroll"></div>
+      <div id="mPicker" class="m-picker hidden"></div>
       <div class="chat-input">
         <textarea id="mBox" rows="1" placeholder="検証の悩み・相談を入力…"></textarea>
-        <button class="send-btn" id="mSend">送信</button>
+        <button class="send-btn" id="mSend">AIに送信</button>
       </div>
+      <button class="human-btn" id="mHuman">人のメンターに相談する</button>
     </div>
   </div>`;
-  $("#mbd").onclick = () => (root.innerHTML = "");
-  $("#mClose").onclick = () => (root.innerHTML = "");
+  const close = () => (root.innerHTML = "");
+  $("#mbd").onclick = close;
+  $("#mClose").onclick = close;
 
   let msgs = [];
+  let mentors = null;
+  const bubble = (m) =>
+    m.role === "human"
+      ? `<div class="bubble human"><div class="human-head">${esc(m.mentor_name || "メンター")}<span>人のメンター</span></div>${esc(m.content).replace(/\n/g, "<br>")}</div>`
+      : `<div class="bubble ${m.role === "user" ? "user" : "assistant"}">${esc(m.content).replace(/\n/g, "<br>")}</div>`;
   const draw = () => {
     $("#mScroll").innerHTML = msgs.length
-      ? msgs
-          .map(
-            (m) => `<div class="bubble ${m.role === "user" ? "user" : "assistant"}">${esc(m.content).replace(/\n/g, "<br>")}</div>`
-          )
-          .join("")
+      ? msgs.map(bubble).join("")
       : `<div class="mentor-empty">検証の進め方、顧客の反応の読み方、ピボット判断など、何でも相談してください。</div>`;
     $("#mScroll").scrollTop = $("#mScroll").scrollHeight;
   };
@@ -680,32 +702,133 @@ async function openMentor(vid, v) {
   } catch {}
   draw();
 
-  const send = async () => {
+  const typing = (cls) => {
+    const t = document.createElement("div");
+    t.className = `bubble ${cls} typing`;
+    t.innerHTML = "<span></span><span></span><span></span>";
+    $("#mScroll").appendChild(t);
+    $("#mScroll").scrollTop = $("#mScroll").scrollHeight;
+    return t;
+  };
+
+  const sendAI = async () => {
     const text = $("#mBox").value.trim();
     if (!text) return;
     msgs.push({ role: "user", content: text });
     $("#mBox").value = "";
     draw();
     $("#mSend").disabled = true;
-    const t = document.createElement("div");
-    t.className = "bubble assistant typing";
-    t.innerHTML = "<span></span><span></span><span></span>";
-    $("#mScroll").appendChild(t);
+    const t = typing("assistant");
     try {
       const { messages } = await api("POST", "/api/mentor/" + vid, { content: text });
       msgs = messages;
       draw();
     } catch (ex) {
       t.remove();
-      msgs.push({ role: "ai", content: "" + ex.message });
+      msgs.push({ role: "ai", content: ex.message });
       draw();
     }
     $("#mSend").disabled = false;
   };
-  $("#mSend").onclick = send;
+  $("#mSend").onclick = sendAI;
   $("#mBox").onkeydown = (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendAI();
   };
+
+  // 人メンターのピッカー
+  $("#mHuman").onclick = async () => {
+    const picker = $("#mPicker");
+    if (!picker.classList.contains("hidden")) {
+      picker.classList.add("hidden");
+      return;
+    }
+    picker.classList.remove("hidden");
+    picker.innerHTML = `<div class="m-picker-loading"><div class="spark small"></div></div>`;
+    if (!mentors) {
+      try {
+        mentors = (await api("GET", "/api/mentors")).mentors;
+      } catch {
+        mentors = [];
+      }
+    }
+    picker.innerHTML =
+      `<div class="m-picker-head">相談したいメンターを選んでください</div>` +
+      mentors
+        .map(
+          (m) => `
+      <div class="m-pick-row">
+        ${mentorAvatar(m, 38)}
+        <div class="m-pick-info"><div class="m-pick-name">${esc(m.name)}</div><div class="m-pick-title">${esc(m.title)}</div></div>
+        <button class="m-pick-btn" data-mid="${m.id}">相談</button>
+      </div>`
+        )
+        .join("");
+    picker.querySelectorAll(".m-pick-btn").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const mentorId = +b.dataset.mid;
+          const content = $("#mBox").value.trim();
+          const chosen = mentors.find((x) => x.id === mentorId);
+          picker.classList.add("hidden");
+          $("#mBox").value = "";
+          msgs.push({ role: "user", content: content || `${chosen?.name}さんに相談したいです。` });
+          draw();
+          const t = typing("human");
+          try {
+            const { messages } = await api("POST", "/api/mentor/" + vid + "/human", { mentorId, content });
+            msgs = messages;
+            draw();
+            toast(`${chosen?.name}さんに相談を送りました`);
+          } catch (ex) {
+            t.remove();
+            msgs.push({ role: "ai", content: ex.message });
+            draw();
+          }
+        })
+    );
+  };
+}
+
+// ============================================================
+//  ⑤ メンター一覧（プロピッカー風）
+// ============================================================
+async function viewMentors() {
+  app.innerHTML = `<div class="loading-inline"><div class="spark small"></div></div>`;
+  let mentors = [];
+  try {
+    mentors = (await api("GET", "/api/mentors")).mentors;
+  } catch {}
+  app.innerHTML = `
+    <div class="page-head">
+      <div><h1 class="page-title">メンター</h1>
+        <p class="page-sub">各分野のプロに、検証の壁打ちや事業相談ができます</p></div>
+      <button class="ghost-btn" data-go="/lab">検証ラボへ →</button>
+    </div>
+    <div class="mentor-grid">
+      ${mentors
+        .map(
+          (m) => `
+      <div class="mentor-card">
+        <div class="mentor-card-top">
+          ${mentorAvatar(m, 56)}
+          <div class="mentor-meta">
+            <div class="mentor-name">${esc(m.name)}</div>
+            <div class="mentor-title">${esc(m.title)}</div>
+          </div>
+        </div>
+        <div class="mentor-focus">「${esc(m.focus || "")}」</div>
+        <p class="mentor-bio">${esc(m.bio || "")}</p>
+        <div class="tags">${(m.expertise || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
+        <div class="mentor-foot">
+          <span class="mentor-stat">相談 ${m.responses}件</span>
+          <span class="mentor-rate">${esc(m.rate || "")}</span>
+        </div>
+      </div>`
+        )
+        .join("")}
+    </div>
+    <p class="mentor-hint">相談するには、検証ラボでアイデアの「メンターに相談」→「人のメンターに相談」を選んでください。</p>`;
+  app.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => navigate(b.dataset.go)));
 }
 
 // ---------- start ----------

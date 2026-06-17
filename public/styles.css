@@ -1218,3 +1218,222 @@ body {
   padding: 13px;
   font-weight: 700;
 }
+
+/* ============================================================
+   Goal box (open requirement) + Mentors
+   ============================================================ */
+.goal-box {
+  background: rgba(108, 92, 255, 0.08);
+  border: 1px solid rgba(108, 92, 255, 0.3);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.goal-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #c8c2ff;
+  margin-bottom: 7px;
+}
+.goal-label span {
+  font-weight: 400;
+  color: var(--muted-2);
+}
+.goal-input {
+  width: 100%;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.goal-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+/* mentor avatar */
+.m-avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-family: "Outfit", sans-serif;
+  font-weight: 800;
+  flex: none;
+}
+
+/* mentor list page (ProPicker style) */
+.mentor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+.mentor-card {
+  background: linear-gradient(180deg, var(--card) 0%, var(--bg-soft) 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.mentor-card-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.mentor-name {
+  font-size: 17px;
+  font-weight: 800;
+}
+.mentor-title {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.mentor-focus {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-2);
+  margin-bottom: 10px;
+}
+.mentor-bio {
+  font-size: 13px;
+  color: #d7ddf2;
+  line-height: 1.7;
+  margin-bottom: 14px;
+  flex: 1;
+}
+.mentor-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.mentor-stat {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mentor-rate {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--good);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.mentor-hint {
+  color: var(--muted-2);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 24px;
+}
+
+/* human mentor in modal */
+.human-btn {
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid var(--brand);
+  color: #c8c2ff;
+  padding: 12px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.human-btn:hover {
+  background: rgba(108, 92, 255, 0.12);
+}
+.bubble.human {
+  background: rgba(255, 122, 89, 0.1);
+  border: 1px solid rgba(255, 122, 89, 0.32);
+  align-self: flex-start;
+  border-top-left-radius: 4px;
+  max-width: 88%;
+}
+.human-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  color: #ffd9c9;
+  margin-bottom: 5px;
+}
+.human-head span {
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--accent);
+  border: 1px solid rgba(255, 122, 89, 0.4);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.m-picker {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 10px;
+  margin-bottom: 10px;
+  max-height: 230px;
+  overflow-y: auto;
+}
+.m-picker-head {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 4px 4px 10px;
+}
+.m-picker-loading {
+  display: grid;
+  place-items: center;
+  padding: 24px 0;
+}
+.m-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px;
+  border-radius: 10px;
+}
+.m-pick-row:hover {
+  background: var(--card-2);
+}
+.m-pick-info {
+  flex: 1;
+  min-width: 0;
+}
+.m-pick-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+.m-pick-title {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-pick-btn {
+  flex: none;
+  background: var(--grad);
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+}
