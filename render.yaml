@@ -1,0 +1,19 @@
+# Render.com で「Blueprint」からワンクリック公開する設定
+# 1. このリポジトリをGitHubにpush
+# 2. Render → New → Blueprint → リポジトリを選択 → Apply
+services:
+  - type: web
+    name: idea-spark
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node --no-warnings server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: AI_MODE
+        value: mock
+      # 本物のAIを使う場合は Render の管理画面で OPENAI_API_KEY を追加し
+      # AI_MODE を auto に変更してください（キーはコミットしないこと）

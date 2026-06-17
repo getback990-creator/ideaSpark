@@ -1,0 +1,18 @@
+{
+  "name": "idea-spark",
+  "version": "1.0.0",
+  "description": "AIがトレンドを反映した事業アイデアを複数提案するプラットフォーム",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

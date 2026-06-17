@@ -1,0 +1,8 @@
+node_modules/
+.npm-cache/
+.env
+*.log
+data.db
+data.db-*
+
+.claude/
